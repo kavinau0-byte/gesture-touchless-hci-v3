@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Touchless Kiosk</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:20px/1.3 system-ui,sans-serif;background:#fff7ed;color:#1f2937;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:#ea580c;color:#fff;padding:14px 24px;font-size:26px;font-weight:700;display:flex;justify-content:space-between}
+header small{font-size:16px;font-weight:400;align-self:center}
+main{flex:1;display:flex;gap:20px;padding:20px;min-height:0}
+#menu{flex:1;display:flex;flex-direction:column;gap:16px}
+#tabs{display:flex;gap:12px}
+button{font:inherit;cursor:pointer;border:0;border-radius:14px;min-height:64px;padding:0 22px;background:#fff;color:#1f2937;box-shadow:0 1px 4px #0003;transition:.1s}
+button:hover{outline:5px solid #ea580c;transform:scale(1.04)}
+.tab{flex:1;font-weight:600}.tab.on{background:#ea580c;color:#fff}
+#items{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:#fff;border-radius:18px;padding:18px;box-shadow:0 1px 6px #0002;display:flex;flex-direction:column;gap:10px}
+.card h3{margin:0;font-size:24px}.price{color:#6b7280}
+.go{background:#ea580c;color:#fff;font-weight:600}
+aside{width:340px;background:#fff;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 6px #0002}
+aside h2{margin:0}#cart{flex:1;overflow:auto}
+.line{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #eee;font-size:17px}
+.line button{min-height:44px;padding:0 14px}.opt{color:#6b7280;font-size:14px}
+.total{font-size:26px;font-weight:700;display:flex;justify-content:space-between}
+.ov{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center}
+.ov.show{display:flex}.box{background:#fff;border-radius:22px;padding:28px;width:560px;display:flex;flex-direction:column;gap:14px}
+.box h2{margin:0}.row{display:flex;gap:12px}.row button{flex:1}
+.sel{background:#ea580c;color:#fff}
+button.hot{outline:5px solid #ea580c;transform:scale(1.04)}
+</style></head><body>
+<header><span>Cafe Kiosk — Touchless Order</span><small>Point to move · Pinch to select · Open palm = rest</small></header>
+<main>
+ <section id="menu"><div id="tabs"></div><div id="items"></div></section>
+ <aside><h2>Your order</h2><div id="cart"></div>
+  <div class="total"><span>Total</span><span id="tot">₹0</span></div>
+  <button class="go" onclick="place()">Place order</button></aside>
+</main>
+<div class="ov" id="mod"><div class="box" id="mbox"></div></div>
+<div class="ov" id="done"><div class="box"><h2>Order placed ✔</h2><p id="tok"></p><button class="go" onclick="reset()">New order</button></div></div>
+<script>
+const MENU={Burgers:[["Veg Burger",120],["Chicken Burger",160],["Paneer Burger",150]],
+Pizza:[["Margherita",220],["Farmhouse",280],["Pepperoni",300]],
+Drinks:[["Cold Coffee",110],["Lemon Soda",70],["Mango Shake",130]]};
+let cat="Burgers",cart=[],cur=null,n=0;
+const $=id=>document.getElementById(id);
+function tabs(){$("tabs").innerHTML=Object.keys(MENU).map(c=>`<button class="tab ${c==cat?"on":""}" onclick="cat='${c}';draw()">${c}</button>`).join("")}
+function items(){$("items").innerHTML=MENU[cat].map((m,i)=>`<div class="card"><h3>${m[0]}</h3><div class="price">₹${m[1]}</div><button class="go" onclick="cust(${i})">Customise &amp; add</button></div>`).join("")}
+function cust(i){const m=MENU[cat][i];cur={name:m[0],base:m[1],large:false,cheese:false,onion:false,spicy:false};modal()}
+function modal(){const o=cur,b=(k,l)=>`<button class="${o[k]?"sel":""}" onclick="cur.${k}=!cur.${k};modal()">${l}</button>`;
+$("mbox").innerHTML=`<h2>${o.name}</h2><div class="row"><button class="${o.large?"":"sel"}" onclick="cur.large=false;modal()">Regular</button><button class="${o.large?"sel":""}" onclick="cur.large=true;modal()">Large +₹40</button></div>
+<div class="row">${b("cheese","Extra cheese +₹30")}${b("onion","No onion")}${b("spicy","Extra spicy")}</div>
+<div class="row"><button onclick="$('mod').classList.remove('show')">Cancel</button><button class="go" onclick="add()">Add to order</button></div>`;$("mod").classList.add("show")}
+function add(){const o=cur,p=o.base+(o.large?40:0)+(o.cheese?30:0);
+const t=[o.large?"Large":"Regular",o.cheese&&"Extra cheese",o.onion&&"No onion",o.spicy&&"Extra spicy"].filter(Boolean).join(", ");
+cart.push({name:o.name,opt:t,p});$("mod").classList.remove("show");draw()}
+function cartDraw(){$("cart").innerHTML=cart.length?cart.map((c,i)=>`<div class="line"><div>${c.name}<div class="opt">${c.opt}</div></div><div>₹${c.p}</div><button onclick="cart.splice(${i},1);draw()">✕</button></div>`).join(""):'<p class="opt">Nothing yet — pick an item.</p>';
+$("tot").textContent="₹"+cart.reduce((s,c)=>s+c.p,0)}
+function place(){if(!cart.length)return;$("tok").textContent="Your token number is #"+(++n)+". Please collect at the counter.";$("done").classList.add("show")}
+function reset(){cart=[];$("done").classList.remove("show");draw()}
+function draw(){tabs();items();cartDraw()}draw();
+/* Aim assist: the nearest button within SNAP px lights up, and a click near it activates it */
+const SNAP=110;let hot=null;
+function nearest(x,y){const sc=document.querySelector('.ov.show')||document;let best=null,bd=1e9;
+ sc.querySelectorAll('button').forEach(b=>{if(b.offsetParent===null)return;const r=b.getBoundingClientRect(),
+ d=Math.hypot(Math.max(r.left-x,0,x-r.right),Math.max(r.top-y,0,y-r.bottom));if(d<bd){bd=d;best=b}});return bd<=SNAP?best:null}
+document.addEventListener('mousemove',e=>{const b=nearest(e.clientX,e.clientY);if(b!==hot){hot&&hot.classList.remove('hot');hot=b;hot&&hot.classList.add('hot')}});
+document.addEventListener('click',e=>{if(e.target.closest('button'))return;const b=nearest(e.clientX,e.clientY);if(b)b.click()});
+</script></body></html>
