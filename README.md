@@ -68,6 +68,8 @@ slideshow or video player first (media keys work regardless of focus).
 | `--cutoff` (default 3.0) | Lower = steadier cursor but more lag |
 | `--beta` (default 15) | Higher = less lag on fast movements |
 | `--click` (default 0.25) | Lower = pinch must be tighter to click |
+| `--fast-cursor` | Experimental. Moves the cursor from a 120 Hz thread with smoothing (no more stair-stepping) |
+| `--record traj.csv` | Saves raw fingertip positions so `tools/cursor_bench.py replay` can measure jitter on real data |
 
 Good lighting on your hand, a charger plugged in, and a steady forearm help more than any setting.
 
@@ -78,10 +80,13 @@ Good lighting on your hand, a charger plugged in, and a steady forearm help more
 | `gesture_hci/geometry.py` | Pure landmark geometry: finger state, gesture classification, swipe, stillness |
 | `gesture_hci/controller.py` | Media / slides modes: vote smoothing, hold timing, swipe cooldown, mode switch |
 | `gesture_hci/kiosk.py` | Kiosk cursor: One-Euro smoothing, pinch-to-click, aim freeze |
+| `gesture_hci/cursor.py` | Cursor output smoother: turns 30 Hz targets into a continuous high-rate path |
+| `gesture_hci/output.py` | 120 Hz cursor output thread (hardware injected, so testable) |
 | `gesture_hci/app.py` | Webcam loop, MediaPipe tracking, overlay, CLI |
 | `gesture_control.py` | Backwards-compatible entry point (`python gesture_control.py ...`) |
 | `kiosk.html` | Touchless ordering kiosk demo page |
 | `tests/` | Unit tests on synthetic hand landmarks (no camera needed) |
+| `tools/cursor_bench.py` | Cursor smoothness numbers: jitter, lag, overshoot, stair-stepping (`sim` needs no camera) |
 | `tools/evaluate_accuracy.py` | Record labelled gestures from your webcam and report accuracy |
 | `.github/workflows/tests.yml` | Runs the tests on every push |
 

@@ -5,6 +5,7 @@ import time
 
 from .controller import MODES, Controller
 from .kiosk import KioskController
+from .output import CursorOutput
 
 
 def parse_args(argv=None):
@@ -15,7 +16,19 @@ def parse_args(argv=None):
     ap.add_argument("--cutoff", type=float, default=3.0, help="kiosk: lower = steadier but laggier (try 1.5-6)")
     ap.add_argument("--beta", type=float, default=15.0, help="kiosk: higher = less lag on fast moves (try 8-30)")
     ap.add_argument("--click", type=float, default=0.25, help="kiosk: pinch ratio that clicks; lower = tighter pinch")
+    ap.add_argument("--fast-cursor", action="store_true",
+                    help="kiosk: move the cursor from a 120 Hz thread with smoothing (smoother, experimental)")
+    ap.add_argument("--record", metavar="CSV", help="kiosk: save raw fingertip positions (for tools/cursor_bench.py replay)")
     return ap.parse_args(argv)
+
+
+def make_mover(pg):
+    """Fast cursor mover: Win32 SetCursorPos on Windows (pyautogui import already made the process DPI-aware)."""
+    if os.name == "nt":
+        import ctypes
+        set_pos = ctypes.windll.user32.SetCursorPos
+        return lambda x, y: set_pos(int(x), int(y))
+    return lambda x, y: pg.moveTo(x, y, _pause=False)
 
 
 def open_camera(cv2, index):
@@ -49,6 +62,13 @@ def main(argv=None):
         else:
             sw, sh = pg.size()
         kc = KioskController(sw, sh, cutoff=args.cutoff, beta=args.beta, click=args.click)
+        out = None
+        if args.fast_cursor and pg is not None:
+            out = CursorOutput(make_mover(pg))
+            out.start()
+        rec = open(args.record, "w", newline="") if args.record else None
+        if rec:
+            rec.write("t,x,y\n")
 
     cap = open_camera(cv2, args.cam)
     if not cap.isOpened():
@@ -82,10 +102,19 @@ def main(argv=None):
             if kiosk:
                 wl = res.multi_hand_world_landmarks
                 wpts = [(l.x, l.y, l.z) for l in wl[0].landmark] if wl else None
+                if rec:
+                    rec.write(f"{now:.4f},{pts[8][0]:.5f},{pts[8][1]:.5f}\n")
                 pos, click, gesture = kc.update(now, pts, wpts)
-                if pos and pg:
+                if out:
+                    if pos:
+                        out.feed(now, *pos)
+                    else:
+                        out.rest()
+                elif pos and pg:
                     pg.moveTo(pos[0], pos[1], _pause=False)
                 if click:
+                    if out:
+                        out.snap_now(*pos, t=now)   # land exactly on the aim point
                     if pg:
                         pg.click()
                     last_action, last_action_t = "Click", now
@@ -105,6 +134,8 @@ def main(argv=None):
             ctl.lost()
             if kiosk:
                 kc.lost()
+                if out:
+                    out.rest()
 
         latency_ms = (time.perf_counter() - t_start) * 1000
         fps = 0.9 * fps + 0.1 / max(now - prev_t, 1e-6)
@@ -128,3 +159,8 @@ def main(argv=None):
 
     cap.release()
     cv2.destroyAllWindows()
+    if kiosk:
+        if out:
+            out.stop()
+        if rec:
+            rec.close()
