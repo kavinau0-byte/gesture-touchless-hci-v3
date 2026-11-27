@@ -2,10 +2,13 @@
 import argparse
 import os
 import time
+from collections import deque
 
 from .controller import MODES, Controller
 from .kiosk import KioskController
 from .output import CursorOutput
+
+WINDOW_NAME = "Gesture HCI  (q to quit)"
 
 
 def parse_args(argv=None):
@@ -19,6 +22,9 @@ def parse_args(argv=None):
     ap.add_argument("--fast-cursor", action="store_true",
                     help="kiosk: move the cursor from a 120 Hz thread with smoothing (smoother, experimental)")
     ap.add_argument("--record", metavar="CSV", help="kiosk: save raw fingertip positions (for tools/cursor_bench.py replay)")
+    ap.add_argument("--fps", type=int, default=30, help="requested camera fps")
+    ap.add_argument("--width", type=int, default=640, help="requested capture width")
+    ap.add_argument("--height", type=int, default=480, help="requested capture height")
     return ap.parse_args(argv)
 
 
@@ -31,13 +37,13 @@ def make_mover(pg):
     return lambda x, y: pg.moveTo(x, y, _pause=False)
 
 
-def open_camera(cv2, index):
+def open_camera(cv2, index, fps=30, width=640, height=480):
     cap = cv2.VideoCapture(index, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(index)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)   # always process the newest frame
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_FPS, 30)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, fps)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     return cap
 
 
@@ -70,10 +76,11 @@ def main(argv=None):
         if rec:
             rec.write("t,x,y\n")
 
-    cap = open_camera(cv2, args.cam)
+    cap = open_camera(cv2, args.cam, args.fps, args.width, args.height)
     if not cap.isOpened():
         raise SystemExit(f"Could not open camera {args.cam}. Try --cam 1.")
-    print(f"Camera reports {cap.get(cv2.CAP_PROP_FPS):.0f} fps at "
+    print(f"Camera request {args.fps} fps {args.width}x{args.height}; reports "
+          f"{cap.get(cv2.CAP_PROP_FPS):.1f} fps at "
           f"{cap.get(cv2.CAP_PROP_FRAME_WIDTH):.0f}x{cap.get(cv2.CAP_PROP_FRAME_HEIGHT):.0f}")
     hands = mp.solutions.hands.Hands(
         max_num_hands=1, model_complexity=0,
@@ -84,11 +91,19 @@ def main(argv=None):
     ctl = Controller("media" if kiosk else args.mode)
     last_action, last_action_t = "", -10.0
     prev_t, fps = time.perf_counter(), 0.0
+    frame_times = deque()
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     while cap.isOpened():
         ok, frame = cap.read()
         if not ok:
             break
+        frame_t = time.perf_counter()
+        frame_times.append(frame_t)
+        while frame_times and frame_t - frame_times[0] > 1.0:
+            frame_times.popleft()
+        cam_fps = ((len(frame_times) - 1) / (frame_t - frame_times[0])
+                   if len(frame_times) > 1 else 0.0)
         t_start = time.perf_counter()
         frame = cv2.flip(frame, 1)
         res = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -118,7 +133,8 @@ def main(argv=None):
                     if pg:
                         pg.click()
                     last_action, last_action_t = "Click", now
-                    print(f"[{time.strftime('%H:%M:%S')}] CLICK at {pos}")
+                    print(f"[{time.strftime('%H:%M:%S')}] CLICK at {pos} "
+                          f"(pinch {kc.ratio:.3f})")
                 tip = (int(pts[8][0] * frame.shape[1]), int(pts[8][1] * frame.shape[0]))
                 cv2.circle(frame, tip, 14, (0, 0, 255) if gesture == "PINCH" else (0, 255, 0), 3)
                 event = None
@@ -143,17 +159,22 @@ def main(argv=None):
 
         # ---- overlay
         w = frame.shape[1]
-        cv2.rectangle(frame, (0, 0), (w, 92), (30, 30, 30), -1)
+        cv2.rectangle(frame, (0, 0), (w, 120 if kiosk else 92), (30, 30, 30), -1)
         cv2.putText(frame, f"Gesture: {gesture}", (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         if now - last_action_t < 1.5:
             cv2.putText(frame, f"Action: {last_action}", (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         cv2.putText(frame, f"MODE: {'KIOSK' if kiosk else ctl.mode.upper()} | {fps:3.0f} FPS | {latency_ms:4.1f} ms"
                     + (" | DRY RUN" if args.dry else ""),
                     (10, 82), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        if kiosk:
+            ratio_text = "--" if kc.ratio is None else f"{kc.ratio:.2f}"
+            cv2.putText(frame, f"FAST-CURSOR {'ON' if out else 'OFF'} | pinch {ratio_text} "
+                        f"(click<{kc.CLICK:.2f}) | cam {cam_fps:4.1f} fps",
+                        (10, 108), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         cv2.rectangle(frame, (w - 130, 12), (w - 10, 30), (90, 90, 90), 1)
         cv2.rectangle(frame, (w - 130, 12), (w - 130 + int(120 * progress), 30), (0, 200, 255), -1)
 
-        cv2.imshow("Gesture HCI  (q to quit)", frame)
+        cv2.imshow(WINDOW_NAME, frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 

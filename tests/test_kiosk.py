@@ -53,3 +53,15 @@ def test_release_rearms_click_after_debounce():
 def test_click_threshold_configurable():
     strict = KioskController(SW, SH, click=0.001)
     assert not any(strict.update(i / 30, make_hand("POINT", pinch=True))[1] for i in range(10))
+
+
+def test_ratio_is_exposed_and_reset():
+    k = KioskController(SW, SH)
+    assert k.ratio is None
+    k.update(0.0, make_hand("POINT"))
+    point_ratio = k.ratio
+    assert point_ratio is not None
+    k.update(1 / 30, make_hand("POINT", pinch=True))
+    assert k.ratio < point_ratio
+    k.lost()
+    assert k.ratio is None

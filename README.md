@@ -70,6 +70,9 @@ slideshow or video player first (media keys work regardless of focus).
 | `--click` (default 0.25) | Lower = pinch must be tighter to click |
 | `--fast-cursor` | Experimental. Moves the cursor from a 120 Hz thread with smoothing (no more stair-stepping) |
 | `--record traj.csv` | Saves raw fingertip positions so `tools/cursor_bench.py replay` can measure jitter on real data |
+| `--fps` (default 30) | Requested camera frame rate; the kiosk HUD shows the measured frame rate |
+| `--width` (default 640) | Requested capture width |
+| `--height` (default 480) | Requested capture height |
 
 Good lighting on your hand, a charger plugged in, and a steady forearm help more than any setting.
 

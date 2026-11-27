@@ -38,11 +38,13 @@ class KioskController:
         self.cutoff, self.beta = cutoff, beta
         self.CLICK = click   # pinch ratio that counts as a click
         self.pos, self.pinched, self.last_click = None, False, -10.0
+        self.ratio = None
         self.trail, self.frozen = deque(), None
         self.fx, self.fy = OneEuro(cutoff, beta), OneEuro(cutoff, beta)
 
     def lost(self):
         self.pinched, self.frozen = False, None
+        self.ratio = None
         self.trail.clear()
         self.fx, self.fy = OneEuro(self.cutoff, self.beta), OneEuro(self.cutoff, self.beta)
 
@@ -54,6 +56,7 @@ class KioskController:
         up, _ = finger_states(fp)
         size = dist(fp[WRIST], fp[MIDDLE_MCP])
         ratio = dist(fp[THUMB_TIP], fp[INDEX_TIP]) / size
+        self.ratio = ratio
         if all(up.values()) or not (up["index"] or ratio < self.FREEZE):
             self.pinched, self.frozen = False, None
             return None, False, "REST"
