@@ -48,6 +48,7 @@ python gesture_control.py --dry                # overlay only, sends nothing (us
 python gesture_control.py                      # media mode, real keystrokes
 python gesture_control.py --mode slides        # PowerPoint slideshow control
 python gesture_control.py --mode kiosk         # touchless mouse for the kiosk page
+python -m gesture_hci --dry                    # same thing; gesture_control.py is a thin wrapper
 ```
 
 Press `q` in the camera window to quit. Keystrokes go to whichever window has focus, so click your
@@ -66,24 +67,48 @@ slideshow or video player first (media keys work regardless of focus).
 |---|---|
 | `--cutoff` (default 3.0) | Lower = steadier cursor but more lag |
 | `--beta` (default 15) | Higher = less lag on fast movements |
-| `--click` (default 0.20) | Lower = pinch must be tighter to click |
+| `--click` (default 0.25) | Lower = pinch must be tighter to click |
 
 Good lighting on your hand, a charger plugged in, and a steady forearm help more than any setting.
 
-## Files
+## Project layout
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `gesture_control.py` | Camera capture, MediaPipe tracking, gesture logic, modes, overlay |
+| `gesture_hci/geometry.py` | Pure landmark geometry: finger state, gesture classification, swipe, stillness |
+| `gesture_hci/controller.py` | Media / slides modes: vote smoothing, hold timing, swipe cooldown, mode switch |
+| `gesture_hci/kiosk.py` | Kiosk cursor: One-Euro smoothing, pinch-to-click, aim freeze |
+| `gesture_hci/app.py` | Webcam loop, MediaPipe tracking, overlay, CLI |
+| `gesture_control.py` | Backwards-compatible entry point (`python gesture_control.py ...`) |
 | `kiosk.html` | Touchless ordering kiosk demo page |
-| `requirements.txt` | Python dependencies |
+| `tests/` | Unit tests on synthetic hand landmarks (no camera needed) |
+| `tools/evaluate_accuracy.py` | Record labelled gestures from your webcam and report accuracy |
+| `.github/workflows/tests.yml` | Runs the tests on every push |
+
+## Testing
+
+```bash
+pip install pytest
+python -m pytest -q
+```
+
+The core logic never imports OpenCV or MediaPipe, so the tests run anywhere.
+
+## Measuring accuracy
+
+```bash
+python tools/evaluate_accuracy.py collect --out data.csv --seconds 8   # hold each gesture when prompted
+python tools/evaluate_accuracy.py report --csv data.csv                # confusion matrix, precision, recall
+```
+
+Collect data from several people and lighting conditions before quoting a number.
 
 ## Limitations
 
 - One hand at a time
 - Tracking gets worse in poor light, with cluttered backgrounds, or when a finger points straight at the camera
 - Gesture recognition is rule-based; a trained classifier (e.g. SVM) is a possible extension
-- Accuracy has not been formally measured yet
+- Accuracy has not been formally measured yet; `tools/evaluate_accuracy.py` is provided to do it
 
 ## Tech
 
